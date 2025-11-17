@@ -1,3 +1,3 @@
 1. Provided electronical components - Darius
 2. Provided wooden mock-up model - Marius
-3.
+3. Calculated the necessary resitance for the LCD Contrast pin and implemented it from base resistances - Darius
