@@ -1,0 +1,234 @@
+#include <LiquidCrystal.h>
+#include <SPI.h>
+#include <MFRC522.h>
+#include <Servo.h>
+
+// ---------------- PINI LCD 16x2 (mod 4-bit) ----------------
+// LCD pin 4 (RS) -> D7
+// LCD pin 6 (E)  -> D6
+// LCD pin 11 (D4)-> D5
+// LCD pin 12 (D5)-> D4
+// LCD pin 13 (D6)-> D3
+// LCD pin 14 (D7)-> D2
+const int PIN_LCD_RS = 7;
+const int PIN_LCD_E  = 6;
+const int PIN_LCD_D4 = 5;
+const int PIN_LCD_D5 = 4;
+const int PIN_LCD_D6 = 3;
+const int PIN_LCD_D7 = 2;
+
+// ---------------- PINI RFID RC522 ----------------
+// SDA -> D10
+// SCK -> D13
+// MOSI-> D11
+// MISO-> D12
+// RST -> D8
+const int PIN_RFID_SS  = 10;  // SDA
+const int PIN_RFID_RST = 8;   // RST
+
+// ---------------- SERVO ----------------
+const int PIN_SERVO = 9;      // signal (portocaliu)
+
+// ---------------- CALL RECEIVER ----------------
+// LED rosu: A0
+// LED verde: A1
+// Buzzer: A2
+// Butoane: Answer -> A3, Reject -> A4, Call (usa) -> A5
+const int PIN_LED_RED    = A0;
+const int PIN_LED_GREEN  = A1;
+const int PIN_BUZZER     = A2;
+const int PIN_BTN_ANSWER = A3;
+const int PIN_BTN_REJECT = A4;
+const int PIN_BTN_CALL   = A5;
+
+// ---------------- OBIECTE ----------------
+
+LiquidCrystal lcd(PIN_LCD_RS, PIN_LCD_E,
+                  PIN_LCD_D4, PIN_LCD_D5,
+                  PIN_LCD_D6, PIN_LCD_D7);
+
+MFRC522 rfid(PIN_RFID_SS, PIN_RFID_RST);
+
+Servo doorServo;
+
+// UID-ul unui card acceptat (EXEMPLU!)
+// Trebuie inlocuit cu UID-ul real al cardului vostru
+byte acceptedUID[4] = {0xDE, 0xAD, 0xBE, 0xEF};
+
+// ---------------- FUNCTII UTILE ----------------
+
+void lockDoor() {
+  // unghi pentru usa inchisa (ajustati la nevoie)
+  doorServo.write(0);
+}
+
+void unlockDoor() {
+  // unghi pentru usa deschisa (ajustati la nevoie)
+  doorServo.write(90);
+}
+
+void openDoorForSeconds(int secunde) {
+  unlockDoor();
+  digitalWrite(PIN_LED_GREEN, HIGH);  // verde ON cat timp usa e deschisa
+  delay(secunde * 1000);
+  digitalWrite(PIN_LED_GREEN, LOW);
+  lockDoor();
+}
+
+void showIdleScreen() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Apasa CALL sau");
+  lcd.setCursor(0, 1);
+  lcd.print("foloseste card");
+  // LED-uri stinse in stare idle
+  digitalWrite(PIN_LED_RED, LOW);
+  digitalWrite(PIN_LED_GREEN, LOW);
+}
+
+// ---------------- LOGICA APELULUI ----------------
+
+void handleCall() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Apel in curs...");
+  digitalWrite(PIN_LED_RED, HIGH); // rosu: apel in asteptare
+  tone(PIN_BUZZER, 1000);          // sunet de apel
+
+  unsigned long startTime = millis();
+  bool answered = false;
+  bool rejected = false;
+
+  // asteptam max. 10 secunde raspunsul sau respingerea
+  while (millis() - startTime < 10000) {
+    if (digitalRead(PIN_BTN_ANSWER) == LOW) {   // buton Answer apasat
+      answered = true;
+      break;
+    }
+    if (digitalRead(PIN_BTN_REJECT) == LOW) {   // buton Reject apasat
+      rejected = true;
+      break;
+    }
+  }
+
+  noTone(PIN_BUZZER);
+  digitalWrite(PIN_LED_RED, LOW); // stingem rosu dupa decizie
+
+  if (answered) {
+    // ACCEPTARE: LED verde ON + usa se deschide
+    digitalWrite(PIN_LED_GREEN, HIGH);
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Apel acceptat");
+    openDoorForSeconds(5);   // in interior stinge si LED verde
+  } else if (rejected) {
+    // RESPINGERE: LED rosu ON scurt
+    digitalWrite(PIN_LED_RED, HIGH);
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Apel respins");
+    delay(2000);
+    digitalWrite(PIN_LED_RED, LOW);
+  } else {
+    // Nimeni nu a apasat nimic
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Nimeni nu");
+    lcd.setCursor(0, 1);
+    lcd.print("răspunde");
+    delay(2000);
+  }
+
+  showIdleScreen();
+}
+
+// ---------------- LOGICA RFID ----------------
+
+void handleRFID() {
+  // Verificam daca e un card nou si daca se poate citi
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) {
+    return;
+  }
+
+  bool ok = true;
+
+  if (rfid.uid.size != 4) {
+    ok = false;
+  } else {
+    for (byte i = 0; i < 4; i++) {
+      if (rfid.uid.uidByte[i] != acceptedUID[i]) {
+        ok = false;
+        break;
+      }
+    }
+  }
+
+  if (ok) {
+    // CARD ACCEPTAT
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Acces permis");
+    openDoorForSeconds(5);
+  } else {
+    // CARD RESPINS
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Acces interzis");
+    digitalWrite(PIN_LED_RED, HIGH);
+    tone(PIN_BUZZER, 2000);
+    delay(800);
+    noTone(PIN_BUZZER);
+    digitalWrite(PIN_LED_RED, LOW);
+    delay(800);
+  }
+
+  // Oprim comunicatia cu acel tag
+  rfid.PICC_HaltA();
+  rfid.PCD_StopCrypto1();
+
+  showIdleScreen();
+}
+
+// ---------------- SETUP ----------------
+
+void setup() {
+  // Butoane: la GND -> INPUT_PULLUP (apasat = LOW)
+  pinMode(PIN_BTN_CALL,   INPUT_PULLUP);
+  pinMode(PIN_BTN_ANSWER, INPUT_PULLUP);
+  pinMode(PIN_BTN_REJECT, INPUT_PULLUP);
+
+  // LED-uri, buzzer
+  pinMode(PIN_LED_RED,   OUTPUT);
+  pinMode(PIN_LED_GREEN, OUTPUT);
+  pinMode(PIN_BUZZER,    OUTPUT);
+
+  // Servo
+  doorServo.attach(PIN_SERVO);
+  lockDoor();
+
+  // LCD
+  lcd.begin(16, 2);
+  lcd.clear();
+  lcd.print("Interfon RFID");
+  delay(1500);
+  showIdleScreen();
+
+  // RFID
+  SPI.begin();
+  rfid.PCD_Init();
+}
+
+// ---------------- LOOP ----------------
+
+void loop() {
+  // 1. Verificam butonul CALL (de la usa)
+  if (digitalRead(PIN_BTN_CALL) == LOW) {
+    delay(30); // debounce simplu
+    if (digitalRead(PIN_BTN_CALL) == LOW) {
+      handleCall();
+    }
+  }
+
+  // 2. Verificam cardul RFID
+  handleRFID();
+}
