@@ -1,0 +1,44 @@
+Intercom System Pin configuration
+
+##LCD Display (16 Pin)
+VSS -> GND
+VDD -> 5V
+VO -> custom resistance -> GND
+RS -> D2
+E -> D3
+// Intentional gap
+DB4 -> D4
+DB5 -> D5
+DB6 -> D6
+DB7 -> D7
+A -> 5V
+K -> GND
+
+##RFID - RC522
+3.3V -> 3.3V
+RST -> D8
+GND -> GND
+MISO -> D12
+MOSI -> D11
+SCK -> D13
+SDA -> D10
+
+##Initiate call button
+IN -> 5V
+OUT-> D1
+
+##Call Reciever 
+
+Send Call Pin Input -> D0 (Play tone)
+GND -> GND
+ACCEPT CALL -> D15 
+DENY CALL -> D14
+
+##Stepper Motor Driver
+
+INT 4 -> D16
+INT 3 -> D17
+INT 2 -> D18
+INT 1 -> D19
+V+ -> 5V
+V- -> GND
