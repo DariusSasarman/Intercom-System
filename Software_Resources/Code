@@ -1,180 +1,140 @@
-#include <SPI.h>
-#include <MFRC522.h>
-#include <LiquidCrystal.h>
+  #include <SPI.h>
+  #include <MFRC522.h>
+  #include <LiquidCrystal.h>
+  #include <Stepper.h>
 
-#include <Stepper.h>
+  /* ================== CONSTANTE ================== */
 
-const int stepsPerRevolution = 2048;
+  const int stepsPerRevolution = 2048;
+  const int stepsForDoor = 420;
 
-// cate grade vrei sa se deschida usa (ex: ~50°)
-const int stepsForDoor = 420; // (2048 / 360) * 50 ≈ 285
+  /* ================== PINI ================== */
 
-// ATENȚIE la ordinea pinilor (corectă pentru 28BYJ-48)
+  // RFID
+  #define SS_PIN   10
+  #define RST_PIN  8
 
+  // LCD
+  LiquidCrystal lcd(2, 3, 4, 5, 6, 7);
 
-/* PINI  */
-// RFID
-#define SS_PIN 10
-#define RST_PIN 9
+  // Butoane / LED / Buzzer
+  #define BTN_CALL 9
+  #define BUZZER   A1
 
-// LCD
-LiquidCrystal lcd(2, 3, 4, 5, 6, 7);
+  // Motor
+  #define IN1 A5
+  #define IN2 A4
+  #define IN3 A3
+  #define IN4 A2
 
-// Buton / LED / Buzzer
-#define BTN_CALL    8
-#define GREEN       A1
-#define RED         A0
-#define BUZZER      0
+  /* ================== VARIABILE ================== */
 
-// Motor ULN2003
-#define IN1 A5
-#define IN2 A4
-#define IN3 A3
-#define IN4 A2  
+  bool lastButtonState = HIGH;
 
-MFRC522 rfid(SS_PIN, RST_PIN);
-Stepper myStepper(stepsPerRevolution, IN1, IN3, IN2, IN4);
+  /* ================== OBIECTE ================== */
+  MFRC522 rfid(SS_PIN, MFRC522::UNUSED_PIN);  
+  Stepper myStepper(stepsPerRevolution, IN1, IN3, IN2, IN4);
 
-/* UID AUTORIZAT */
-//  schimbă cu UID-ul TAG-ului tău
-byte authorizedUID[4] = {0x73, 0x77, 0xF1, 0x2C};
+  /* ================== UID ================== */
 
-/* ---------- FUNCȚII ---------- */
+  byte authorizedUID[4] = {0x73, 0x77, 0xF1, 0x2C};
 
-bool checkUID(byte *uid) {
-  for (byte i = 0; i < 4; i++) {
-    if (uid[i] != authorizedUID[i]) return false;
-  }
-  return true;
-}
+  /* ================== FUNCȚII ================== */
 
-void beep(int duration = 100) {
-  tone(BUZZER,440);
-}
-
-bool check_reply()
-{
-  while(true)
-  {
-    if(digitalRead(GREEN) == LOW)
-    {
-      return true;
+  bool checkUID(byte *uid) {
+    for (byte i = 0; i < 4; i++) {
+      if (uid[i] != authorizedUID[i]) return false;
     }
-    if(digitalRead(RED) == LOW)
-    {
-      return false;
-    }
+    return true;
   }
-}
 
-void accessDenied()
-{
-  lcd.clear();
-  lcd.print("Acces Denied");
-  delay(100000);
-}
-void unlockDoor() {
-  lcd.clear();
-  lcd.print("Access Granted");
-
-  // DESCHIDERE usa (~50 grade)
-  myStepper.step(-stepsForDoor);
-  delay(500);
-
-  // USA RAMANE DESCHISA
-  delay(5000); // 50 secunde
-
-  // INCHIDERE usa (invers)
-  myStepper.step(stepsForDoor);
-  delay(500);
-
-  lcd.clear();
-  lcd.print("Ready...");
-}
-
-
-/* SETUP- */
-void setup() {
-
-  myStepper.setSpeed(8); // 5–10 RPM este ideal
-
-
-  pinMode(BTN_CALL, INPUT_PULLUP);
-  pinMode(GREEN, INPUT_PULLUP);
-  pinMode(RED, INPUT_PULLUP);
-  pinMode(BUZZER, OUTPUT);
-
-  pinMode(IN1, OUTPUT);
-  pinMode(IN2, OUTPUT);
-  pinMode(IN3, OUTPUT);
-  pinMode(IN4, OUTPUT);
-
-  lcd.begin(16, 2);
-  lcd.print("Initializing...");
-
-  SPI.begin();
-  rfid.PCD_Init();
-
-  delay(1000);
-  lcd.clear();
-  lcd.print("Ready...");
-}
-
-/* LOOP */
-void loop() {
-
-  //  Buton apel
-  if (digitalRead(BTN_CALL) == LOW) {
+  void beep(int duration = 200) {
+    tone(BUZZER, 3000);
+  }
+  void accessDenied() {
     lcd.clear();
-    lcd.print("Calling...");
-    beep(1000);
-    bool answer = check_reply();
+    lcd.print("Access Denied");
+    beep(500);
+    delay(2000);
     noTone(BUZZER);
-    if(answer)
-    {
-      unlockDoor();
-    }
-    else
-    {
-      accessDenied();
-    }
     lcd.clear();
     lcd.print("Ready...");
   }
 
-  //  RFID
-  if (!rfid.PICC_IsNewCardPresent()) return;
-  if (!rfid.PICC_ReadCardSerial()) return;
+  void unlockDoor() {
+    lcd.clear();
+    lcd.print("Access Granted");
+    beep(300);
 
-  if (checkUID(rfid.uid.uidByte)) {
-    unlockDoor();
-  } else {
-    accessDenied();
+    myStepper.step(-stepsForDoor);
+    delay(500);
+
+    delay(5000);
+
+    myStepper.step(stepsForDoor);
+    delay(500);
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, LOW);
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, LOW);
+
+    noTone(BUZZER);
+    lcd.clear();
+    lcd.print("Ready...");
   }
 
-  rfid.PICC_HaltA();
-  rfid.PCD_StopCrypto1();
-}
+  /* ================== SETUP ================== */
 
+  void setup() {
 
+    myStepper.setSpeed(8);
 
+    pinMode(BTN_CALL, INPUT_PULLUP);
+    pinMode(BUZZER, OUTPUT);
+    
+    pinMode(A0, INPUT);
 
+    pinMode(IN1, OUTPUT);
+    pinMode(IN2, OUTPUT);
+    pinMode(IN3, OUTPUT);
+    pinMode(IN4, OUTPUT);
 
+    lcd.begin(16, 2);
+    lcd.print("Initializing...");
+    
+    pinMode(10, OUTPUT);   // keep SPI master mode stable
+    digitalWrite(10, HIGH); 
+    SPI.begin();
+    rfid.PCD_Init();
 
+    delay(1000);
+    lcd.clear();
+    lcd.print("Ready...");
+  }
 
+  /* ================== LOOP ================== */
+  void loop() {
+    bool currentButtonState = digitalRead(BTN_CALL);
 
+    if (lastButtonState == HIGH && currentButtonState == LOW) {
+      lcd.clear();
+      lcd.print("Inside unlock");
+      delay(3000);
+      unlockDoor();
+    }
 
+    lastButtonState = currentButtonState;
 
+    if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+      lcd.clear();
+      lcd.print("Reading card rn");
+      delay(3000);
+      if (checkUID(rfid.uid.uidByte)) unlockDoor();
+      else accessDenied();
 
-
-
-
-
-
-
-
-
-
-
-
-
+      rfid.PICC_HaltA();
+      rfid.PCD_StopCrypto1();
+      lcd.clear();
+      lcd.print("ready");
+    }
+  }
