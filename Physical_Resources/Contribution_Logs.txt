@@ -3,3 +3,6 @@
 3. Found the necessary resitance (~2.73k) for the LCD Contrast pin and implemented it starting from base resistance values (10k,1k,200k) - Darius
 4. Implemented the call reciever component - Darius
 5. Implemented the locking mechanism - Darius
+6. Provided Arduino code (C/C++) for device control and system logic – Marius
+7. Created the project documentation – Darius
+8. Tested the system and fixed issues through iterative debugging and adjustments – both
